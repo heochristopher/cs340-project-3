@@ -138,6 +138,7 @@ class Topology:
         plt.show()
         plt.close(OUTPUT_PATH + filename)
         self.wait()
+        print("finished drawing")
 
     def get_correct_path(self, source, destination):
         try:

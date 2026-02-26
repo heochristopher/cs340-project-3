@@ -117,6 +117,7 @@ class Link_State_Node(Node):
         link = frozenset([source, destination])
 
         if link not in self.links or sequence > self.links[link]:
+            #print("new")
             self.links[link] = sequence
             
             if source not in self.graph:
@@ -131,7 +132,8 @@ class Link_State_Node(Node):
                 self.graph[source][destination] = cost
                 self.graph[destination][source] = cost
 
-        else:
+        elif sequence < self.links[link]:
+            #print("old")
             # old, send back new
             if source in self.graph and destination in self.graph[source]:
                 current_cost = self.graph[source][destination]
@@ -145,6 +147,9 @@ class Link_State_Node(Node):
                 "sender": self.id
             }
             self.send_to_neighbor(sent_from, json.dumps(latest_msg))
+            return
+        else:
+            #print("equal")
             return
             
         self.dijkstra(self.id)
