@@ -11,7 +11,7 @@ class Link_State_Node(Node):
 
     # Return a string
     def __str__(self):
-        return "Rewrite this function to define your node dump printout"
+        return "A Generic Node: " + str(self.id) + "\n"
     
     def dijkstra(self, start):
         dist = {start: 0}
@@ -21,7 +21,7 @@ class Link_State_Node(Node):
         visited = set()
 
         while pq:
-            dist, node = heapq.heappop(pq)
+            current_dist, node = heapq.heappop(pq)
             if node in visited:
                 continue
             visited.add(node)
@@ -30,7 +30,7 @@ class Link_State_Node(Node):
                 if latency == -1:
                     continue
                     
-                new_dist = dist + latency
+                new_dist = current_dist + latency
                 if new_dist < dist.get(neighbor, float('inf')):
                     dist[neighbor] = new_dist
                     if node == start:
@@ -49,12 +49,39 @@ class Link_State_Node(Node):
         # latency = -1 if delete a link
         if latency == -1 and neighbor in self.neighbors:
             self.neighbors.remove(neighbor)
-            del self.graph[neighbor]
             del self.graph[self.id][neighbor]
+            del self.graph[neighbor][self.id]
+            
         else:
-            self.neighbors.append(neighbor)
-            self.graph[neighbor] = latency
+            if neighbor not in self.neighbors:
+                self.neighbors.append(neighbor)
+                
+                #connect island
+                for link, seq in self.links.items():
+                    src, dst = tuple(link)
+                    if src in self.graph:
+                        if dst in self.graph[src]:
+                            cost = self.graph[src][dst]
+                        else:
+                            cost = -1
+                    else:
+                        cost = -1
+                    catch_up_msg = {
+                        "source": src,
+                        "destination": dst,
+                        "cost": cost,
+                        "sequence": seq,
+                        "sender": self.id
+                    }
+                    self.send_to_neighbor(neighbor, json.dumps(catch_up_msg))
+                
+                
+            if self.id not in self.graph:
+                self.graph[self.id] = {}
+            if neighbor not in self.graph:
+                self.graph[neighbor] = {}
             self.graph[self.id][neighbor] = latency
+            self.graph[neighbor][self.id] = latency
 
         link = frozenset({self.id, neighbor})
         if link not in self.links:
@@ -68,13 +95,14 @@ class Link_State_Node(Node):
             "source": self.id,
             "destination": neighbor,
             "cost": latency,
-            "sequence": self.links[link]
+            "sequence": self.links[link],
+            "sender": self.id
         }
         json_msg = json.dumps(link_msg)
         self.send_to_neighbors(json_msg)
         self.logging.debug('link update, neighbor %d, latency %d, time %d' % (neighbor, latency, self.get_time()))
         
-        pass
+
 
     # Fill in this function
     def process_incoming_routing_message(self, m):
@@ -84,30 +112,48 @@ class Link_State_Node(Node):
         destination = msg["destination"]
         cost = msg["cost"]
         sequence = msg["sequence"]
+        sent_from = msg["sender"]
 
         link = frozenset([source, destination])
 
-        if link not in self.links:
+        if link not in self.links or sequence > self.links[link]:
             self.links[link] = sequence
-        else:
-            if sequence > self.links[link]:
-                self.links[link] = sequence
+            
+            if source not in self.graph:
+                self.graph[source] = {}
+            if destination not in self.graph:
+                self.graph[destination] = {}
+            
+            if cost == -1:
+                self.graph[source].pop(destination, None)
+                self.graph[destination].pop(source, None)
             else:
-                # Old, dont propogate
-                latest_msg = {
-                    "source": source,
-                    "destination": destination,
-                    "cost": self.graph[source][destination],
-                    "sequence": self.links[link]["sequence"]
-                }
-                json_latest = json.dumps(latest_msg)
-                if sender_id is not None:
-                    self.send_to_neighbor(sender_id, json_latest)
-                return
+                self.graph[source][destination] = cost
+                self.graph[destination][source] = cost
+
+        else:
+            # old, send back new
+            if source in self.graph and destination in self.graph[source]:
+                current_cost = self.graph[source][destination]
+            else:
+                current_cost = -1
+            latest_msg = {
+                "source": source,
+                "destination": destination,
+                "cost": current_cost,
+                "sequence": self.links[link],
+                "sender": self.id
+            }
+            self.send_to_neighbor(sent_from, json.dumps(latest_msg))
+            return
+            
         self.dijkstra(self.id)
+        
+        msg["sender"] = self.id
+        m = json.dumps(msg)
 
         for neighbor in self.neighbors:
-            if neighbor != sender_id:
+            if neighbor != sent_from:
                 self.send_to_neighbor(neighbor, m)
 
     # Return a neighbor, -1 if no path to destination
