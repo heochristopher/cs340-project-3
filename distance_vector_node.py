@@ -92,6 +92,9 @@ class Distance_Vector_Node(Node):
             del self.neighbor_costs[neighbor]
             del self.neighbor_dvs[neighbor]
             del self.neighbor_latest_seq[neighbor]
+            was_updated = self.bellman_ford()
+            if was_updated:
+                self.send_updates()
         else:
             if neighbor not in self.neighbors:
                 self.neighbors.append(neighbor)
