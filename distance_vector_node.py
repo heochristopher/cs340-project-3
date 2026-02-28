@@ -108,6 +108,7 @@ class Distance_Vector_Node(Node):
 
     # Fill in this function
     def process_incoming_routing_message(self, m):
+        #print("incoming")
         message = json.loads(m)
         sender = message["sender"]
         seq = message["seq"]
